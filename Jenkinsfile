@@ -1,64 +1,58 @@
-
-
 pipeline {
-// Defines where the pipeline will execute. 'agent any' means it can run on any available agent.
-agent any
-environment {
-    // Use a unique name for the Docker image
-    IMAGE_NAME = "helloworld-java:${BUILD_ID}"
-}
+    agent any
 
-stages {
-    // Stage 1: Checkout the source code
-    stage('Checkout') {
-        steps {
-            // Assuming the source code (HelloWorld.java and Dockerfile) 
-            // is retrieved from a source control system (e.g., Git)
-            checkout scm
+    environment {
+        GIT_REPOSITORY_URL = 'https://github.com/labina2025/firstrepo.git'
+        DOCKER_IMAGE_NAME = 'lab2025/docker_java'
+        IMAGE_TAG = '1.0'
+    }
+
+    stages {
+        stage('Clone Repository') {
+            steps {
+                script {
+                    try {
+                        git branch: 'main', url: GIT_REPOSITORY_URL
+                    } catch (Exception e) {
+                        echo "Failed to clone repository: ${e.message}"
+                        error "Failed to clone repository"
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    try {
+                        docker.build("${DOCKER_IMAGE_NAME}:${IMAGE_TAG}")
+                    } catch (Exception e) {
+                        echo "Failed to build Docker image: ${e.message}"
+                        error "Failed to build Docker image"
+                    }
+                }
+            }
+        }
+
+        stage('Push to DockerHub') {
+            steps {
+                script {
+                    try {
+                        withCredentials([usernamePassword(credentialsId: 'my-docker-hub-credentials-id', 
+                                                         usernameVariable: 'DOCKER_USERNAME', 
+                                                         passwordVariable: 'DOCKER_PASSWORD')]) {
+                            // Explicit login before push
+                            sh """
+                            echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+                            docker push ${DOCKER_IMAGE_NAME}:${IMAGE_TAG}
+                            """
+                        }
+                    } catch (Exception e) {
+                        echo "Failed to push Docker image to registry: ${e.message}"
+                        error "Failed to push Docker image"
+                    }
+                }
+            }
         }
     }
-
-    // Stage 2: Build the Docker Image
-    stage('Build Image') {
-        steps {
-            // Use the Dockerfile to build the image and tag it with the IMAGE_NAME variable.
-            // The '.' indicates the Dockerfile is in the current directory.
-            echo "Building Docker image ${IMAGE_NAME}..."
-            sh "docker build -t ${IMAGE_NAME} ."
-        }
-    }
-
-    // Stage 3: Run a quick test to ensure the container starts and prints output
-    stage('Run Test') {
-        steps {
-            // Runs the container and prints the output.
-            // --rm ensures the container is cleaned up immediately after execution.
-            echo "Running container test..."
-            sh "docker run --rm ${IMAGE_NAME}"
-        }
-    }
-
-    // Stage 4: Clean up the locally built image
-    stage('Cleanup') {
-        steps {
-            echo "Cleaning up local image ${IMAGE_NAME}..."
-            sh "docker rmi ${IMAGE_NAME}"
-        }
-    }
-}
-
-// Post-build actions (e.g., notifications)
-post {
-    always {
-        echo 'Pipeline finished.'
-    }
-    success {
-        echo 'Build and Test successful!'
-    }
-    failure {
-        echo 'Build or Test failed!'
-    }
-}
-
-
 }
